@@ -115,4 +115,4 @@ docker exec -it postgres psql -U postgres -d mydb -c '\d public.mysql_customers_
 
 ## 📖 Resume-ready description
 
-*Built a containerized Change Data Capture (CDC) pipeline (MySQL → Kafka → PostgreSQL) using Debezium & Kafka Connect. Supported real-time replication, schema evolution, and table normalization with Docker Compose orchestration.*
+*MySQL → PostgreSQL CDC via Debezium & Kafka Connect (Docker Compose)*
