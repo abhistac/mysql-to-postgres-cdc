@@ -1,0 +1,48 @@
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  end-to-end:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Seed .env from template
+        run: cp .env.example .env
+
+      - name: Start stack
+        run: make up
+
+      - name: Register connectors
+        run: make register
+
+      - name: Wait for connectors to settle
+        run: |
+          for i in $(seq 1 30); do
+            mysql_state=$(curl -sf http://localhost:8083/connectors/mysql-source/status | jq -r '.connector.state')
+            sink_state=$(curl -sf http://localhost:8083/connectors/jdbc-sink-postgres/status | jq -r '.connector.state')
+            echo "[$i] mysql-source=$mysql_state  jdbc-sink-postgres=$sink_state"
+            if [ "$mysql_state" = "RUNNING" ] && [ "$sink_state" = "RUNNING" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Connectors did not reach RUNNING state in time"
+          exit 1
+
+      - name: Run smoke test
+        run: make smoke
+
+      - name: Dump connect logs on failure
+        if: failure()
+        run: docker compose logs connect
+
+      - name: Tear down
+        if: always()
+        run: make down
