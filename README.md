@@ -1,127 +1,183 @@
 # MySQL → PostgreSQL CDC Pipeline
 
-Real-time Change Data Capture pipeline that replicates a MySQL database into PostgreSQL using Debezium and Kafka Connect. The entire stack — MySQL, Kafka, Zookeeper, Kafka Connect, PostgreSQL, and a monitoring UI — runs in Docker Compose with a single command.
+Real-time Change Data Capture pipeline replicating MySQL to PostgreSQL via Debezium and Kafka Connect. The full stack — MySQL, Kafka, Zookeeper, Kafka Connect, PostgreSQL, and a monitoring UI — runs locally with a single command.
 
-Built to demonstrate the kind of real-time data replication pattern used in production data engineering: zero-downtime migrations, event-driven architecture, and schema evolution without manual intervention.
+Demonstrates the CDC pattern used in production for zero-downtime migrations, event-driven data synchronisation, and real-time data lake ingestion.
 
 ---
 
 ## What it does
 
-- **Initial snapshot**: on startup, captures the full state of the source MySQL database
-- **Continuous CDC**: streams every INSERT, UPDATE, and DELETE as a Kafka event in real time
-- **Schema evolution**: when you add a column to MySQL, PostgreSQL updates automatically (`auto.evolve=true`)
-- **Soft and hard deletes**: configurable — tombstone records or physically delete from the sink
-- **Topic normalization**: handles the `schema.table` naming format that breaks PostgreSQL identifiers
+| Capability | How |
+|-----------|-----|
+| **Initial snapshot** | Debezium reads all existing MySQL rows on first start |
+| **Continuous replication** | Every INSERT, UPDATE, DELETE streams as a Kafka event |
+| **Schema evolution** | `ALTER TABLE` in MySQL → column appears in PostgreSQL automatically |
+| **Upsert semantics** | Duplicate events are idempotent — no double-writes |
+| **Topic normalisation** | `schema.table` naming converted to PostgreSQL-safe identifiers |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────┐    binlog     ┌──────────────────┐    Kafka    ┌─────────────────┐
-│    MySQL    │ ────────────▶ │ Debezium Source  │ ──────────▶ │  Kafka Connect  │
-│  (source)   │               │   Connector      │             │  JDBC Sink      │
-└─────────────┘               └──────────────────┘             └────────┬────────┘
-                                                                         │
-                                                                         ▼
-                                                                ┌─────────────────┐
-                                                                │   PostgreSQL    │
-                                                                │   (target)      │
-                                                                └─────────────────┘
-
-Supporting services: Zookeeper · Kafka · Kafka-UI (localhost:8080)
+MySQL (source)
+  │
+  │  binlog (ROW format)
+  ▼
+Debezium MySQL Source Connector
+  │
+  │  Kafka topic: mysql.customers_data.customers
+  ▼
+Apache Kafka  ◄──  Kafka-UI (localhost:8080)
+  │
+  ▼
+Confluent JDBC Sink Connector
+  │
+  ▼
+PostgreSQL (target)
+  table: public.mysql_customers_data_customers
 ```
+
+**Services:**
+
+| Service | Image | Port |
+|---------|-------|------|
+| MySQL | mysql:8.0 | 3306 |
+| PostgreSQL | postgres:15 | 5432 |
+| Kafka | confluentinc/cp-kafka:7.6.1 | 9094 |
+| Zookeeper | confluentinc/cp-zookeeper:7.6.1 | 2181 |
+| Kafka Connect | custom (see `connect/Dockerfile`) | 8083 |
+| Kafka-UI | provectuslabs/kafka-ui | 8080 |
+
+---
+
+## Prerequisites
+
+- Docker Desktop (or Docker Engine + Compose plugin)
+- `jq` installed (`brew install jq` on Mac, `apt install jq` on Linux)
+- ~4GB free RAM (Kafka + Connect are memory-heavy)
 
 ---
 
 ## Quick start
 
 ```bash
-# Start the full stack
-docker compose up -d --build
+# 1. Start the stack and wait for Kafka Connect to be ready
+make up
 
-# Register source and sink connectors
-bash scripts/register-mysql-source.sh
-bash scripts/register-jdbc-sink.sh
+# 2. Register both connectors
+make register
 
-# Verify both connectors are running
-curl -s http://localhost:8083/connectors/mysql-source/status | jq .
-curl -s http://localhost:8083/connectors/jdbc-sink-postgres/status | jq .
+# 3. Verify both show state: RUNNING
+make status
+```
+
+That's it. The initial snapshot runs automatically — MySQL seed data is already in PostgreSQL.
+
+---
+
+## Verify end-to-end
+
+**Check the initial snapshot:**
+```bash
+make psql
+# Inside psql:
+SELECT COUNT(*) FROM public.mysql_customers_data_customers;
+-- Should return 5 (seed rows from mysql/init/01-schema.sql)
+\q
+```
+
+**Insert rows in MySQL → watch them appear in Postgres:**
+```bash
+make demo-insert
+```
+
+**Update a row → verify it propagates:**
+```bash
+make demo-update
+```
+
+**Add a column → verify schema evolution:**
+```bash
+make demo-schema
 ```
 
 ---
 
-## Demo scenarios
+## All make commands
 
-**1. Verify the initial snapshot replicated**
-```bash
-docker exec -it postgres psql -U postgres -d mydb \
-  -c "SELECT COUNT(*) FROM public.mysql_customers_data_customers;"
 ```
+make up           Start the full stack (waits for Connect to be ready)
+make down         Stop all containers
+make build        Rebuild the Connect image
+make reset        Full teardown including Docker volumes (clean slate)
 
-**2. Insert rows in MySQL → watch them appear in Postgres**
-```bash
-docker exec -i mysql mysql -uroot -prootpwd -h 127.0.0.1 -P 3306 \
-  customers_data < mysql/sql/add_demo_rows.sql
+make register     Register both connectors
+make status       Show connector state (both should be RUNNING)
 
-# Check Postgres — count should increase
-docker exec -it postgres psql -U postgres -d mydb \
-  -c "SELECT COUNT(*) FROM public.mysql_customers_data_customers;"
-```
+make logs         Follow Kafka Connect logs
+make psql         Open PostgreSQL shell
+make mysql        Open MySQL shell
 
-**3. Update a row → verify it propagates**
-```bash
-docker exec -it mysql mysql -uroot -prootpwd -h 127.0.0.1 -P 3306 \
-  -e "UPDATE customers_data.customers SET email='updated@example.com' WHERE customerKey='2001';"
+make demo-insert  Insert 3 rows and verify replication
+make demo-update  Update a row and verify propagation
+make demo-schema  Add a column and verify schema evolution
 
-docker exec -it postgres psql -U postgres -d mydb \
-  -c "SELECT \"customerKey\", email FROM public.mysql_customers_data_customers WHERE \"customerKey\"='2001';"
-```
-
-**4. Add a new column → schema evolution**
-```bash
-docker exec -it mysql mysql -uroot -prootpwd -h 127.0.0.1 -P 3306 \
-  -e "ALTER TABLE customers_data.customers ADD COLUMN phone VARCHAR(32) NULL;"
-
-# Column appears in Postgres automatically
-docker exec -it postgres psql -U postgres -d mydb \
-  -c '\d public.mysql_customers_data_customers'
+make help         Show all commands
 ```
 
 ---
 
-## Makefile shortcuts
+## Common issues
 
+**`make register` fails with connection refused**
+
+Connect isn't ready yet. `make up` waits automatically, but if you ran `register` manually, wait 60–90 seconds after `docker compose up` then try again.
+
+**Connector shows `state: FAILED`**
+
+Check the logs:
 ```bash
-make up        # start stack
-make down      # stop stack
-make register  # register both connectors
-make logs      # follow Kafka Connect logs
-make psql      # open PostgreSQL shell
-make mysql     # open MySQL shell
+make logs
+# or
+docker compose logs connect | grep ERROR
 ```
+Most common cause: MySQL wasn't ready when Debezium tried to connect. Run `make down && make up` to restart cleanly.
+
+**Port 3306 or 5432 already in use**
+
+Stop any local MySQL or Postgres instances, or change the host ports in `docker-compose.yml`.
 
 ---
 
-## Stack
+## Connector configuration
 
-| Component | Role |
-|-----------|------|
-| MySQL | Source database |
-| Debezium MySQL Connector | Reads MySQL binlog, emits CDC events |
-| Apache Kafka + Zookeeper | Event streaming backbone |
-| Kafka Connect | Integration runtime |
-| JDBC Sink Connector | Writes events to PostgreSQL |
-| PostgreSQL | Target database |
-| Kafka-UI | Pipeline monitoring at `localhost:8080` |
-| Docker Compose | Orchestrates all 6 services |
+**`connectors/mysql-source.json`** — Debezium MySQL Source
+
+Key settings:
+- `snapshot.mode: initial` — snapshots existing data on first run, then switches to streaming
+- `transforms.unwrap` — extracts the `after` field from Debezium's envelope so the sink receives flat records
+- `delete.handling.mode: rewrite` — appends `__deleted: true` to deleted records instead of emitting tombstones
+
+**`connectors/jdbc-sink.json`** — Confluent JDBC Sink
+
+Key settings:
+- `insert.mode: upsert` — uses `INSERT ... ON CONFLICT` so replayed events don't create duplicates
+- `auto.evolve: true` — adds new columns to PostgreSQL when MySQL schema changes
+- `pk.fields: customerKey` — required for upsert to work correctly
 
 ---
 
-## Why this matters
+## Version compatibility
 
-CDC is the backbone of modern data engineering. It powers real-time analytics, zero-downtime database migrations, event-driven microservices, and data lake ingestion. This project demonstrates the full pattern end-to-end — the same architecture used in production at companies running Debezium on Kafka at scale.
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Confluent Platform | 7.6.1 | Kafka 3.6 |
+| Debezium MySQL Connector | 2.6.1.Final | Tested against cp-kafka-connect:7.6.1 |
+| kafka-connect-jdbc | 10.7.4 | Last version with stable upsert behaviour |
+| MySQL | 8.0 | binlog_format=ROW required |
+| PostgreSQL | 15 | JDBC sink compatible |
 
 ---
 
