@@ -5,8 +5,8 @@
 
     "database.hostname": "mysql",
     "database.port": "3306",
-    "database.user": "debezium",
-    "database.password": "dbz",
+    "database.user": "${MYSQL_DEBEZIUM_USER}",
+    "database.password": "${MYSQL_DEBEZIUM_PASSWORD}",
     "database.server.id": "184054",
 
     "topic.prefix": "mysql",
