@@ -40,13 +40,13 @@ psql: ## Open a PostgreSQL shell
 	docker exec -it postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
 
 mysql: ## Open a MySQL shell
-	docker exec -it mysql sh -c 'mysql -uroot -p"$$MYSQL_ROOT_PASSWORD" customers_data'
+	docker exec -it mysql sh -c 'mysql -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" customers_data'
 
 # ── Demo ──────────────────────────────────────────────────────────────────────
 
 demo-insert: ## Insert 3 demo rows into MySQL and verify they appear in Postgres
 	@echo "Inserting demo rows into MySQL..."
-	@docker exec -i mysql sh -c 'mysql -uroot -p"$$MYSQL_ROOT_PASSWORD" customers_data' \
+	@docker exec -i mysql sh -c 'mysql -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" customers_data' \
 	  < mysql/sql/add_demo_rows.sql
 	@echo ""
 	@echo "Postgres row count:"
@@ -54,14 +54,14 @@ demo-insert: ## Insert 3 demo rows into MySQL and verify they appear in Postgres
 	  -c "SELECT COUNT(*) AS total_rows FROM public.mysql_customers_data_customers;"'
 
 demo-update: ## Update a row in MySQL and verify it propagates to Postgres
-	@docker exec -i mysql sh -c 'mysql -uroot -p"$$MYSQL_ROOT_PASSWORD" \
+	@docker exec -i mysql sh -c 'mysql -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" \
 	  -e "UPDATE customers_data.customers SET email='\''updated@example.com'\'' WHERE customerKey='\''2001'\'';"'
 	@sleep 2
 	@docker exec -i postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" \
 	  -c "SELECT \"customerKey\", email FROM public.mysql_customers_data_customers WHERE \"customerKey\"='\''2001'\'';"'
 
 demo-schema: ## Add a column to MySQL and verify Postgres schema evolves automatically
-	@docker exec -i mysql sh -c 'mysql -uroot -p"$$MYSQL_ROOT_PASSWORD" \
+	@docker exec -i mysql sh -c 'mysql -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" \
 	  -e "ALTER TABLE customers_data.customers ADD COLUMN phone VARCHAR(32) NULL;"'
 	@sleep 3
 	@echo "Postgres schema after ALTER TABLE:"

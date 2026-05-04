@@ -19,7 +19,7 @@ EMAIL_INITIAL="smoke@example.com"
 EMAIL_UPDATED="smoke-updated@example.com"
 
 mysql_exec() {
-  docker exec -i mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B' "$@"
+  docker exec -i mysql sh -c 'mysql -h 127.0.0.1 -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B' "$@"
 }
 
 psql_query() {
