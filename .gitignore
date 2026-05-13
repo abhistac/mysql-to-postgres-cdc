@@ -9,5 +9,8 @@ Thumbs.db
 # Docker volumes (if ever mounted locally)
 volumes/
 
+# Local environment overrides (template lives in .env.example)
+.env
+
 # Connector registration responses (auto-generated)
 connectors/*.response.json

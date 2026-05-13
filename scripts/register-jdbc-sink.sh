@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
+# Registers the Confluent JDBC Sink (PostgreSQL).
 set -euo pipefail
 
-CONNECT_URL="http://localhost:8083"
-CONNECTOR_NAME="jdbc-sink-postgres"
+if [ -f .env ]; then
+  set -a; source .env; set +a
+fi
 
-echo "Registering JDBC Sink connector (PostgreSQL)..."
+: "${POSTGRES_USER:?POSTGRES_USER not set (copy .env.example to .env)}"
+: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}"
+: "${POSTGRES_DB:?POSTGRES_DB not set}"
 
-response=$(curl -sf -X POST \
-  -H "Content-Type: application/json" \
-  --data @connectors/jdbc-sink.json \
-  "${CONNECT_URL}/connectors")
+# shellcheck source=scripts/_register-connector.sh
+source "$(dirname "$0")/_register-connector.sh"
 
-echo "$response" | jq .
-echo "Done: ${CONNECTOR_NAME} registered."
+register_connector \
+  "jdbc-sink-postgres" \
+  "connectors/jdbc-sink.json" \
+  '${POSTGRES_USER} ${POSTGRES_PASSWORD} ${POSTGRES_DB}'

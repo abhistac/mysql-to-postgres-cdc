@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
+# Registers the Debezium MySQL Source connector.
 set -euo pipefail
 
-CONNECT_URL="http://localhost:8083"
-CONNECTOR_NAME="mysql-source"
+if [ -f .env ]; then
+  set -a; source .env; set +a
+fi
 
-echo "Registering Debezium MySQL Source connector..."
+: "${MYSQL_DEBEZIUM_USER:?MYSQL_DEBEZIUM_USER not set (copy .env.example to .env)}"
+: "${MYSQL_DEBEZIUM_PASSWORD:?MYSQL_DEBEZIUM_PASSWORD not set}"
 
-response=$(curl -sf -X POST \
-  -H "Content-Type: application/json" \
-  --data @connectors/mysql-source.json \
-  "${CONNECT_URL}/connectors")
+# shellcheck source=scripts/_register-connector.sh
+source "$(dirname "$0")/_register-connector.sh"
 
-echo "$response" | jq .
-echo "Done: ${CONNECTOR_NAME} registered."
+register_connector \
+  "mysql-source" \
+  "connectors/mysql-source.json" \
+  '${MYSQL_DEBEZIUM_USER} ${MYSQL_DEBEZIUM_PASSWORD}'

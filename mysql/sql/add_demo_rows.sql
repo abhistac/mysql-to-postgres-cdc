@@ -1,6 +1,5 @@
--- Demo: INSERT new rows
--- Run via: docker exec -i mysql mysql -uroot -prootpwd -h 127.0.0.1 -P 3306 customers_data < mysql/sql/add_demo_rows.sql
--- Or via:  make demo-insert
+-- Demo: INSERT new rows.
+-- Run via:  make demo-insert
 
 INSERT INTO customers_data.customers
   (customerKey, addressKey, title, firstName, lastName, birthdate, gender, maritalStatus, email, creationDate)
