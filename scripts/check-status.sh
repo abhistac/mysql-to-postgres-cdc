@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
-# Check the status of both connectors.
-# Both should show "state": "RUNNING" when healthy.
+# Check the state of every connector in the cluster.
+# Both connectors should show "state": "RUNNING" when healthy.
 set -euo pipefail
 
-CONNECT_URL="http://localhost:8083"
+CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
 
-echo "=== mysql-source ==="
-curl -sf "${CONNECT_URL}/connectors/mysql-source/status" | jq '{
-  state: .connector.state,
-  tasks: [.tasks[] | {id: .id, state: .state}]
-}'
-
-echo ""
-echo "=== jdbc-sink-postgres ==="
-curl -sf "${CONNECT_URL}/connectors/jdbc-sink-postgres/status" | jq '{
-  state: .connector.state,
-  tasks: [.tasks[] | {id: .id, state: .state}]
-}'
+for name in mysql-source jdbc-sink-postgres; do
+  echo "=== ${name} ==="
+  curl -sf "${CONNECT_URL}/connectors/${name}/status" | jq '{
+    state: .connector.state,
+    tasks: [.tasks[] | {id: .id, state: .state}]
+  }'
+  echo ""
+done

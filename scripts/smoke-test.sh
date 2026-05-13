@@ -23,7 +23,10 @@ mysql_exec() {
 }
 
 psql_query() {
-  docker exec -i postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "'"$1"'"'
+  # Returns empty string (instead of failing) when the table doesn't exist yet
+  # or when no row matches. The caller compares against an expected value, so
+  # an empty result simply means "keep polling."
+  docker exec -i postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "'"$1"'"' 2>/dev/null || true
 }
 
 dump_status_on_failure() {

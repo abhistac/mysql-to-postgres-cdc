@@ -152,6 +152,16 @@ To change a password, edit `.env` and re-run `make register` — the registratio
 
 ---
 
+## Security & deployment notes
+
+This repo is a **local development demo**. A few things to know before doing anything else with it:
+
+- All container ports (3306 MySQL, 5432 Postgres, 8083 Connect, 8080 Kafka-UI, 9094 Kafka) are bound to the host for convenience. Do not deploy this `docker-compose.yml` verbatim to a public host — Kafka-UI has no authentication, and the JDBC and MySQL ports would be reachable from the network.
+- `.env.example` ships with demo passwords (`rootpwd`, `dbz`, `postgres`). For anything beyond a local demo, generate fresh credentials in `.env` (which is gitignored).
+- Kafka Connect stores connector configs — including the substituted passwords — in plaintext inside its `connect-configs` Kafka topic. A production setup would use `FileConfigProvider` or an external secret manager (Vault, AWS Secrets Manager) instead.
+
+---
+
 ## Common issues
 
 **`make register` fails with connection refused.** Connect isn't ready yet. `make up` waits automatically; if you ran `register` manually, wait 60–90 s after `docker compose up` then try again.
